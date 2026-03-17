@@ -1,19 +1,19 @@
 package proyectosantiagomora;
 
-public class Producto {
-    private String nombre;
-    private double precio;
+public abstract class Producto {
+    protected String nombre;
+    protected double precioBase;
 
-    public Producto(String nombre, double precio) {
+    public Producto(String nombre, double precioBase) {
         this.nombre = nombre;
-        this.precio = precio;
+        this.precioBase = precioBase;
     }
 
+    public abstract int calcularPrecioFinal(); // Polimorfismo
     public String getNombre() { return nombre; }
-    public double getPrecio() { return precio; }
 
     @Override
     public String toString() {
-        return nombre + " - ₡" + precio;
+        return nombre + " - ₡" + calcularPrecioFinal();
     }
 }

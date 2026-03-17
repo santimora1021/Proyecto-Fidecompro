@@ -4,120 +4,159 @@ import javax.swing.JOptionPane;
 import java.util.ArrayList;
 
 public class Main {
-    private static ArrayList<Usuario> listaUsuarios = new ArrayList<>();
+    // Uso de Colecciones para cumplimiento de rúbrica
+    private static ArrayList<Usuario> usuarios = new ArrayList<>(); 
     private static ArrayList<Producto> inventario = new ArrayList<>();
+    private static Usuario usuarioActual = null;
 
     public static void main(String[] args) {
-        // Carga inicial de productos (10 artículos predeterminados)
-        cargarInventarioInicial();
+        // Inicialización de datos
+        precargarInventario();
+        usuarios.add(new Usuario("admin", "123")); // Usuario por defecto
         
-        boolean appCorriendo = true;
-        while (appCorriendo) {
-            String[] opcionesInciales = {"Registrar Usuario", "Login", "Cerrar App"};
-            int eleccion = JOptionPane.showOptionDialog(null, "SISTEMA FIDECOMPRO\nSeleccione una opción:", 
-                    "Inicio", 0, JOptionPane.QUESTION_MESSAGE, null, opcionesInciales, opcionesInciales[0]);
+        boolean appActiva = true;
+        while (appActiva) {
+            if (usuarioActual == null) {
+                // FLUJO DE INICIO (Sin sesión)
+                String[] opciones = {"Iniciar Sesión", "Registrar Usuario", "Salir"};
+                int sel = JOptionPane.showOptionDialog(null, "SISTEMA FIDECOMPRO\nSeleccione una opción:", 
+                        "Acceso", 0, JOptionPane.QUESTION_MESSAGE, null, opciones, opciones[0]);
 
-            if (eleccion == 0) registrarUsuario();
-            else if (eleccion == 1) login();
-            else appCorriendo = false;
+                if (sel == 0) login();
+                else if (sel == 1) registrar();
+                else appActiva = false;
+            } else {
+                // FLUJO PRINCIPAL (Sesión activa)
+                String[] opciones = {"Facturar (Venta)", "Gestionar Inventario", "Administrar Usuarios", "Cerrar Sesión"};
+                int sel = JOptionPane.showOptionDialog(null, "Sesión activa: " + usuarioActual.getUsername(), 
+                        "Menú Principal", 0, JOptionPane.PLAIN_MESSAGE, null, opciones, opciones[0]);
+
+                switch (sel) {
+                    case 0 -> realizarVenta();
+                    case 1 -> gestionarInventario();
+                    case 2 -> administrarUsuarios();
+                    case 3 -> usuarioActual = null; // Logout
+                }
+            }
         }
     }
 
-    private static void cargarInventarioInicial() {
-        inventario.add(new Producto("Arroz 1kg", 1200));
-        inventario.add(new Producto("Frijoles 1kg", 1500));
-        inventario.add(new Producto("Aceite 1L", 2200));
-        inventario.add(new Producto("Café 500g", 3500));
-        inventario.add(new Producto("Leche 1L", 950));
-        inventario.add(new Producto("Azúcar 1kg", 850));
-        inventario.add(new Producto("Atún", 1100));
-        inventario.add(new Producto("Pasta", 600));
-        inventario.add(new Producto("Detergente", 4500));
-        inventario.add(new Producto("Pan Integral", 1400));
+    private static void precargarInventario() {
+        inventario.add(new ProductoNacional("Arroz 1kg", 1200));
+        inventario.add(new ProductoImportado("Aceite Oliva", 4500));
+        inventario.add(new ProductoNacional("Frijoles 1kg", 1500));
     }
 
-    private static void registrarUsuario() {
-        String u = JOptionPane.showInputDialog("Nuevo Usuario:");
-        String p = JOptionPane.showInputDialog("Contraseña:");
-        if (u != null && p != null) {
-            listaUsuarios.add(new Usuario(u, p));
-            JOptionPane.showMessageDialog(null, "Usuario registrado con éxito.");
+    // --- MÓDULO DE VENTAS (FACTURACIÓN) ---
+    private static void realizarVenta() {
+        try {
+            String id = JOptionPane.showInputDialog("Cédula del Cliente:");
+            String nomC = JOptionPane.showInputDialog("Nombre del Cliente:");
+            if (id == null || nomC == null || id.isEmpty()) return;
+            
+            Cliente cliente = new Cliente(id, nomC);
+            ArrayList<DetalleFactura> carrito = new ArrayList<>();
+            boolean comprando = true;
+
+            while (comprando) {
+                // Uso de Polimorfismo al mostrar productos en la lista
+                Producto p = (Producto) JOptionPane.showInputDialog(null, "Seleccione producto:", 
+                        "Catálogo de Ventas", 3, null, inventario.toArray(), inventario.get(0));
+
+                if (p != null) {
+                    int cant = Integer.parseInt(JOptionPane.showInputDialog("Cantidad de " + p.getNombre() + ":"));
+                    if (cant <= 0) throw new Exception("La cantidad debe ser mayor a 0.");
+                    carrito.add(new DetalleFactura(p, cant));
+                }
+                
+                int r = JOptionPane.showConfirmDialog(null, "¿Desea agregar otro producto?", "Continuar", 0);
+                if (r != 0) comprando = false;
+            }
+
+            if (!carrito.isEmpty()) {
+                int total = 0; // Números enteros según solicitud
+                for (DetalleFactura d : carrito) total += d.getSubtotal();
+                
+                // Llamada al facturador físico
+                Facturador.generarFacturaFisica(cliente, carrito, total);
+            }
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(null, "Error: Debe ingresar un número entero en la cantidad.", "Error de entrada", 0);
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, "Error: " + e.getMessage(), "Error", 0);
+        }
+    }
+
+    // --- MÓDULO DE INVENTARIO (CON IVA) ---
+    private static void gestionarInventario() {
+        String[] opciones = {"Añadir Producto", "Eliminar Producto", "Volver"};
+        int sel = JOptionPane.showOptionDialog(null, "ADMINISTRACIÓN DE INVENTARIO", "Inventario", 
+                0, JOptionPane.INFORMATION_MESSAGE, null, opciones, opciones[0]);
+
+        try {
+            if (sel == 0) {
+                String nom = JOptionPane.showInputDialog("Nombre del nuevo producto:");
+                double pre = Double.parseDouble(JOptionPane.showInputDialog("Precio base (Colones):"));
+
+                // Selección de origen para aplicar IVA o no
+                String[] tipos = {"Nacional (Sin IVA)", "Importado (+13% IVA)"};
+                int tipoSel = JOptionPane.showOptionDialog(null, "¿Origen del producto?", "Configurar IVA", 
+                        0, JOptionPane.QUESTION_MESSAGE, null, tipos, tipos[0]);
+
+                if (tipoSel == 0) inventario.add(new ProductoNacional(nom, pre));
+                else if (tipoSel == 1) inventario.add(new ProductoImportado(nom, pre));
+                
+                JOptionPane.showMessageDialog(null, "Producto guardado exitosamente.");
+            } else if (sel == 1) {
+                Producto borrar = (Producto) JOptionPane.showInputDialog(null, "Seleccione producto a eliminar:",
+                        "Eliminar", 2, null, inventario.toArray(), inventario.get(0));
+                if (borrar != null) inventario.remove(borrar);
+            }
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, "Error en los datos. Intente de nuevo.", "Error", 0);
+        }
+    }
+
+    // --- MÓDULO DE USUARIOS ---
+    private static void administrarUsuarios() {
+        if (usuarios.size() <= 1) {
+            JOptionPane.showMessageDialog(null, "No hay otros usuarios registrados.");
+            return;
+        }
+        String[] nombres = new String[usuarios.size()];
+        for (int i = 0; i < usuarios.size(); i++) nombres[i] = usuarios.get(i).getUsername();
+        
+        String borrar = (String) JOptionPane.showInputDialog(null, "Seleccione usuario para eliminar:", 
+                "Administrar Cuentas", 2, null, nombres, nombres[0]);
+        
+        if (borrar != null) {
+            if (borrar.equals(usuarioActual.getUsername())) {
+                JOptionPane.showMessageDialog(null, "No puede eliminar la cuenta en uso.");
+            } else {
+                usuarios.removeIf(u -> u.getUsername().equals(borrar));
+                JOptionPane.showMessageDialog(null, "Usuario eliminado.");
+            }
         }
     }
 
     private static void login() {
         String u = JOptionPane.showInputDialog("Usuario:");
         String p = JOptionPane.showInputDialog("Contraseña:");
-        boolean acceso = false;
-        for (Usuario user : listaUsuarios) {
-            if (user.getUsername().equals(u) && user.getPassword().equals(p)) acceso = true;
-        }
-
-        if (acceso) menuPrincipal();
-        else JOptionPane.showMessageDialog(null, "Acceso Denegado", "Error", JOptionPane.ERROR_MESSAGE);
-    }
-
-    private static void menuPrincipal() {
-        boolean enMenu = true;
-        while (enMenu) {
-            String[] opciones = {"Facturar (Venta)", "Gestionar Inventario", "Cerrar Sesión"};
-            int selec = JOptionPane.showOptionDialog(null, "MENÚ PRINCIPAL", "Fidecompro", 
-                    0, JOptionPane.PLAIN_MESSAGE, null, opciones, opciones[0]);
-
-            switch (selec) {
-                case 0 -> realizarVenta();
-                case 1 -> gestionarInventario();
-                default -> enMenu = false;
+        for (Usuario user : usuarios) {
+            if (user.getUsername().equals(u) && user.getPassword().equals(p)) {
+                usuarioActual = user;
+                return;
             }
         }
+        JOptionPane.showMessageDialog(null, "Credenciales incorrectas.", "Error", 0);
     }
 
-    private static void gestionarInventario() {
-        String[] opciones = {"Añadir Producto", "Eliminar Producto", "Volver"};
-        int eleccion = JOptionPane.showOptionDialog(null, "ADMINISTRACIÓN DE PRODUCTOS", "Inventario", 
-                0, JOptionPane.INFORMATION_MESSAGE, null, opciones, opciones[0]);
-
-        if (eleccion == 0) { // Añadir
-            String nom = JOptionPane.showInputDialog("Nombre del nuevo producto:");
-            double pre = Double.parseDouble(JOptionPane.showInputDialog("Precio en Colones:"));
-            inventario.add(new Producto(nom, pre));
-            JOptionPane.showMessageDialog(null, "Producto añadido.");
-        } 
-        else if (eleccion == 1) { // Eliminar
-            Producto borrar = (Producto) JOptionPane.showInputDialog(null, "Seleccione el producto a eliminar:",
-                    "Eliminar", JOptionPane.WARNING_MESSAGE, null, inventario.toArray(), inventario.get(0));
-            if (borrar != null) {
-                inventario.remove(borrar);
-                JOptionPane.showMessageDialog(null, "Producto eliminado.");
-            }
+    private static void registrar() {
+        String u = JOptionPane.showInputDialog("Nuevo nombre de usuario:");
+        String p = JOptionPane.showInputDialog("Nueva contraseña:");
+        if (u != null && !u.trim().isEmpty() && p != null) {
+            usuarios.add(new Usuario(u, p));
+            JOptionPane.showMessageDialog(null, "Registro exitoso.");
         }
-    }
-
-    private static void realizarVenta() {
-        String ced = JOptionPane.showInputDialog("Cédula del Cliente:");
-        String nomC = JOptionPane.showInputDialog("Nombre del Cliente:");
-        Cliente cliente = new Cliente(ced, nomC);
-        
-        ArrayList<DetalleFactura> carrito = new ArrayList<>();
-        boolean comprando = true;
-
-        while (comprando) {
-            Producto p = (Producto) JOptionPane.showInputDialog(null, "Seleccione artículo:", 
-                    "Venta", JOptionPane.QUESTION_MESSAGE, null, inventario.toArray(), inventario.get(0));
-
-            if (p != null) {
-                int cant = Integer.parseInt(JOptionPane.showInputDialog("Cantidad de " + p.getNombre() + ":"));
-                carrito.add(new DetalleFactura(p, cant));
-            }
-
-            int r = JOptionPane.showConfirmDialog(null, "¿Agregar otro producto?", "Continuar", JOptionPane.YES_NO_OPTION);
-            if (r == JOptionPane.NO_OPTION) comprando = false;
-        }
-
-        double total = 0;
-        for (DetalleFactura d : carrito) total += d.getSubtotal();
-        
-        // Llamada a la clase Facturador para generar el archivo .txt
-        Facturador.imprimirFacturaFisica(cliente, carrito, total);
     }
 }
